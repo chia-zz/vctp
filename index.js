@@ -1,24 +1,48 @@
 const express = require("express");
+const http = require("http"); // 新增：HTTP 伺服器
+const { Server } = require("socket.io"); // 新增：Socket.io
 const cors = require("cors");
-const multer = require("multer"); // 引入處理檔案的工具
+const multer = require("multer");
 require("dotenv").config();
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
+// === 關鍵修改：建立 HTTP Server 並綁定 Socket.io ===
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: "*", // 允許任何來源連線 (方便開發)
+    methods: ["GET", "POST"],
+  },
+});
+
 // 設定檔案暫存
 const upload = multer({ dest: "uploads/" });
 
-// 測試連線用
-app.get("/", (req, res) => {
-  res.send("Hello! Travel Planner Backend is Working! 🚀");
+// === Socket.io 事件監聽 ===
+io.on("connection", (socket) => {
+  console.log(`User Connected: ${socket.id}`);
+
+  // 當有人發送訊息
+  socket.on("send_message", (data) => {
+    // 廣播給所有人 (除了自己)
+    socket.broadcast.emit("receive_message", data);
+  });
+
+  socket.on("disconnect", () => {
+    console.log("User Disconnected", socket.id);
+  });
 });
 
-// === 新增：上傳圖片並模擬 AI 分析的 API ===
+// 測試連線用
+app.get("/", (req, res) => {
+  res.send("Hello! Travel Planner Backend with Socket.io is Working! 🚀");
+});
+
+// 上傳圖片 API
 app.post("/api/upload-image", upload.single("image"), (req, res) => {
-  // 這裡我們假裝已經用 Python OCR 分析完了圖片
-  // 直接回傳一份「模擬」的完美資料
   const mockData = {
     dates: ["2024-05-20", "2024-05-24"],
     destinations: ["Osaka", "Kyoto"],
@@ -44,14 +68,13 @@ app.post("/api/upload-image", upload.single("image"), (req, res) => {
       },
     ],
   };
-
-  // 模擬運算需要一點時間 (1.5秒)
   setTimeout(() => {
     res.json(mockData);
   }, 1500);
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+// 注意：這裡改成用 server.listen 而不是 app.listen
+server.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
